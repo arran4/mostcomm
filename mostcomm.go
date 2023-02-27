@@ -110,10 +110,7 @@ func (p *FilePosition) String() string {
 }
 
 func (fpm *FilePositionMatch) HashKey() (b [16]byte) {
-	h := fpm.Hash.Sum(nil)
-	for i, c := range h {
-		b[i] = c
-	}
+	copy(b[:], fpm.Hash.Sum(nil))
 	return
 }
 
