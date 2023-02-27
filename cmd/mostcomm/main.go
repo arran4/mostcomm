@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"flag"
 	"fmt"
+	"hash"
 	"io/fs"
 	"log"
 	"os"
@@ -115,8 +116,12 @@ func (p *FilePosition) String() string {
 	return fmt.Sprintf("%s:%d-%d (%d)", p.File.Filename, p.Start.Position, p.End.Position, p.End.Position-p.Start.Position+1)
 }
 
-func (p *FilePosition) Key() [2][16]byte {
-	return [2][16]byte{p.Start.Hash, p.End.Hash}
+func (p *FilePositionMatch) Key() (b [16]byte) {
+	h := p.Hash.Sum(nil)
+	for i, c := range h {
+		b[i] = c
+	}
+	return
 }
 
 func (p *FilePosition) Duplicate() *Duplicate {
@@ -144,69 +149,78 @@ func (d *Duplicate) String() string {
 type FilePositionMatch struct {
 	FilePosition *FilePosition
 	With         *Line
+	Hash         hash.Hash
 }
 
 func (d *Data) DetectDuplicates() []*Duplicate {
 	var dups []*Duplicate
-	ranges := map[[2][16]byte]*Duplicate{}
+	ranges := map[[16]byte]*Duplicate{}
 	for _, f := range d.Files {
 		var matches []*FilePositionMatch
 		for p := f.Head; p != nil; p = p.Next {
 			var nextMatches []*FilePositionMatch
-			var missedMatches []*FilePositionMatch
+			var missedMatches = map[*File]*FilePositionMatch{}
 			var missedLines = map[*Line]*FilePositionMatch{}
 			for _, l := range d.Lines[p.Hash] {
 				if l.File == p.File {
 					continue
 				}
-				missedLines[l] = &FilePositionMatch{
+				fp := &FilePositionMatch{
 					FilePosition: &FilePosition{
 						Start: p,
 						End:   p,
 						File:  f,
 					},
+					Hash: md5.New(),
 					With: l,
 				}
+				fp.Hash.Sum(p.Hash[:])
+				missedLines[l] = fp
 			}
 			for _, fp := range matches {
 				if fp.With != nil && fp.With.Next != nil {
 					delete(missedLines, fp.With.Next)
 					if fp.With.Next.Hash == p.Hash {
-						fp.FilePosition.End = p
-						fp.With = fp.With.Next
+						fp.Next(p)
 						nextMatches = append(nextMatches, fp)
 						continue
 					}
 				}
-				missedMatches = append(missedMatches, fp)
+				missedMatches[fp.FilePosition.File] = fp
 			}
 			for _, ml := range missedLines {
 				nextMatches = append(nextMatches, ml)
 			}
 			for _, fp := range missedMatches {
-				d, ok := ranges[fp.FilePosition.Key()]
+				d, ok := ranges[fp.Key()]
 				if ok {
 					d.Files = append(d.Files, fp.FilePosition)
 					continue
 				}
 				d = fp.FilePosition.Duplicate()
 				dups = append(dups, d)
-				ranges[fp.FilePosition.Key()] = d
+				ranges[fp.Key()] = d
 			}
 			matches = nextMatches
 		}
 		for _, fp := range matches {
-			d, ok := ranges[fp.FilePosition.Key()]
+			d, ok := ranges[fp.Key()]
 			if ok {
 				d.Files = append(d.Files, fp.FilePosition)
 				continue
 			}
 			d = fp.FilePosition.Duplicate()
 			dups = append(dups, d)
-			ranges[fp.FilePosition.Key()] = d
+			ranges[fp.Key()] = d
 		}
 	}
 	return dups
+}
+
+func (fp *FilePositionMatch) Next(p *Line) {
+	fp.FilePosition.End = p
+	fp.With = fp.With.Next
+	fp.Hash.Write(p.Hash[:])
 }
 
 func main() {
