@@ -50,7 +50,7 @@ func (f *File) Read(c chan struct{}) {
 				File:     f,
 				Prev:     prev,
 				Position: f.Count,
-				Hash:     md5.Sum(b[first:last]),
+				Hash:     md5.Sum(b[first : last+1]),
 			}
 			f.Count++
 			if prev != nil {
@@ -64,7 +64,7 @@ func (f *File) Read(c chan struct{}) {
 				lines = lines[:0]
 			}
 			prev = l
-			first = i
+			first = i + 1
 			last = i
 		default:
 			last = i
@@ -112,7 +112,19 @@ type FilePosition struct {
 }
 
 func (p *FilePosition) String() string {
-	return fmt.Sprintf("%s:%d-%d (%d)", p.File.Filename, p.Start.Position, p.End.Position, p.End.Position-p.Start.Position)
+	return fmt.Sprintf("%s:%d-%d (%d)", p.File.Filename, p.Start.Position, p.End.Position, p.End.Position-p.Start.Position+1)
+}
+
+func (p *FilePosition) Key() [2][16]byte {
+	return [2][16]byte{p.Start.Hash, p.End.Hash}
+}
+
+func (p *FilePosition) Duplicate() *Duplicate {
+	return &Duplicate{
+		Files: []*FilePosition{p},
+		Head:  p.Start.Hash,
+		Tail:  p.End.Hash,
+	}
 }
 
 type Duplicate struct {
@@ -129,78 +141,69 @@ func (d *Duplicate) String() string {
 	return strings.Join(ss, ", ")
 }
 
+type FilePositionMatch struct {
+	FilePosition *FilePosition
+	With         *Line
+}
+
 func (d *Data) DetectDuplicates() []*Duplicate {
 	var dups []*Duplicate
 	ranges := map[[2][16]byte]*Duplicate{}
 	for _, f := range d.Files {
-		matches := map[*File]*Line{}
+		var matches []*FilePositionMatch
 		for p := f.Head; p != nil; p = p.Next {
-			seen := map[*File]struct{}{}
+			var nextMatches []*FilePositionMatch
+			var missedMatches []*FilePositionMatch
+			var missedLines = map[*Line]*FilePositionMatch{}
 			for _, l := range d.Lines[p.Hash] {
-				seen[l.File] = struct{}{}
-				if l == p {
+				if l.File == p.File {
 					continue
 				}
-				_, ok := matches[l.File]
-				if !ok {
-					matches[l.File] = p
-					continue
+				missedLines[l] = &FilePositionMatch{
+					FilePosition: &FilePosition{
+						Start: p,
+						End:   p,
+						File:  f,
+					},
+					With: l,
 				}
 			}
-			var dff []*File
-			for ff, sl := range matches {
-				if ff == f || sl == p {
-					continue
+			for _, fp := range matches {
+				if fp.With != nil && fp.With.Next != nil {
+					delete(missedLines, fp.With.Next)
+					if fp.With.Next.Hash == p.Hash {
+						fp.FilePosition.End = p
+						fp.With = fp.With.Next
+						nextMatches = append(nextMatches, fp)
+						continue
+					}
 				}
-				if _, ok := seen[ff]; ok {
-					continue
-				}
-				fp := &FilePosition{
-					Start: sl,
-					End:   p,
-					File:  f,
-				}
-				k := [2][16]byte{sl.Hash, p.Hash}
-				d, ok := ranges[k]
+				missedMatches = append(missedMatches, fp)
+			}
+			for _, ml := range missedLines {
+				nextMatches = append(nextMatches, ml)
+			}
+			for _, fp := range missedMatches {
+				d, ok := ranges[fp.FilePosition.Key()]
 				if ok {
-					d.Files = append(d.Files, fp)
+					d.Files = append(d.Files, fp.FilePosition)
 					continue
 				}
-				d = &Duplicate{
-					Files: []*FilePosition{fp},
-					Head:  sl.Hash,
-					Tail:  p.Hash,
-				}
+				d = fp.FilePosition.Duplicate()
 				dups = append(dups, d)
-				ranges[k] = d
-				dff = append(dff, ff)
+				ranges[fp.FilePosition.Key()] = d
 			}
-			for _, ff := range dff {
-				delete(matches, ff)
-			}
+			matches = nextMatches
 		}
-		for ff, sl := range matches {
-			if ff == f || sl == f.Tail {
-				continue
-			}
-			fp := &FilePosition{
-				Start: sl,
-				End:   f.Tail,
-				File:  f,
-			}
-			k := [2][16]byte{sl.Hash, f.Tail.Hash}
-			d, ok := ranges[k]
+		for _, fp := range matches {
+			d, ok := ranges[fp.FilePosition.Key()]
 			if ok {
-				d.Files = append(d.Files, fp)
+				d.Files = append(d.Files, fp.FilePosition)
 				continue
 			}
-			d = &Duplicate{
-				Files: []*FilePosition{fp},
-				Head:  sl.Hash,
-				Tail:  f.Tail.Hash,
-			}
+			d = fp.FilePosition.Duplicate()
 			dups = append(dups, d)
-			ranges[k] = d
+			ranges[fp.FilePosition.Key()] = d
 		}
 	}
 	return dups
