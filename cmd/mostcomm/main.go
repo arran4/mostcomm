@@ -132,8 +132,8 @@ func (d *Duplicate) String() string {
 func (d *Data) DetectDuplicates() []*Duplicate {
 	var dups []*Duplicate
 	ranges := map[[2][16]byte]*Duplicate{}
-	matches := map[*File]*Line{}
 	for _, f := range d.Files {
+		matches := map[*File]*Line{}
 		for p := f.Head; p != nil; p = p.Next {
 			seen := map[*File]struct{}{}
 			for _, l := range d.Lines[p.Hash] {
@@ -147,6 +147,7 @@ func (d *Data) DetectDuplicates() []*Duplicate {
 					continue
 				}
 			}
+			var dff []*File
 			for ff, sl := range matches {
 				if ff == f || sl == p {
 					continue
@@ -172,7 +173,34 @@ func (d *Data) DetectDuplicates() []*Duplicate {
 				}
 				dups = append(dups, d)
 				ranges[k] = d
+				dff = append(dff, ff)
 			}
+			for _, ff := range dff {
+				delete(matches, ff)
+			}
+		}
+		for ff, sl := range matches {
+			if ff == f || sl == f.Tail {
+				continue
+			}
+			fp := &FilePosition{
+				Start: sl,
+				End:   f.Tail,
+				File:  f,
+			}
+			k := [2][16]byte{sl.Hash, f.Tail.Hash}
+			d, ok := ranges[k]
+			if ok {
+				d.Files = append(d.Files, fp)
+				continue
+			}
+			d = &Duplicate{
+				Files: []*FilePosition{fp},
+				Head:  sl.Hash,
+				Tail:  f.Tail.Hash,
+			}
+			dups = append(dups, d)
+			ranges[k] = d
 		}
 	}
 	return dups
