@@ -13,10 +13,13 @@ import (
 )
 
 var (
-	dirFlag        = flag.String("dir", ".", "Directory to scan")
-	fileMaskFlag   = flag.String("mask", "*.txt", "File glob mask to scan. , separated")
-	sortFlag       = flag.String("sort", "none", "Sorting order, algorithms; none, loc, average-coverage")
-	sortDirectFlag = flag.String("sort-direction", "ascending", "Sorting direction, algorithms; ascending, descending")
+	dirFlag               = flag.String("dir", ".", "Directory to scan")
+	fileMaskFlag          = flag.String("mask", "*.txt", "File glob mask to scan. , separated")
+	sortFlag              = flag.String("sort", "none", "Sorting order, algorithms; none, lines, average-coverage")
+	sortDirectFlag        = flag.String("sort-direction", "ascending", "Sorting direction, algorithms; ascending, descending")
+	thresholdPercentFlag  = flag.Int("percent-threshold", 0, "Minimum required % of the file in common")
+	thresholdLinesFlag    = flag.Int("lines-threshold", 0, "Minimum required lines of the file in common")
+	thresholdMatchMaxFlag = flag.Int("match-max-threshold", -1, "Maximum time a match is allowed")
 )
 
 func main() {
@@ -36,8 +39,11 @@ func main() {
 	fmt.Printf("%d files scanned\n", len(data.Files))
 	fmt.Printf("%d unique lines scanned\n", len(data.Lines))
 	fmt.Printf("%d total lines scanned\n", data.TotalLines())
-	duplicates := data.DetectDuplicates()
-	fmt.Printf("%d Duplicate runs\n", len(duplicates))
+	duplicates := data.DetectDuplicates(thresholdFunc(*thresholdPercentFlag, *thresholdLinesFlag))
+	fmt.Printf("%d Duplicate founds\n", len(duplicates))
+	if *thresholdMatchMaxFlag >= 0 {
+		duplicates = mostcomm.DeleteMatchMax(duplicates, *thresholdMatchMaxFlag)
+	}
 	direction := func(b bool) bool { return b }
 	switch *sortDirectFlag {
 	case "ascending":
@@ -49,7 +55,7 @@ func main() {
 	}
 	switch *sortFlag {
 	case "none":
-	case "loc":
+	case "lines":
 		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) bool {
 			return direction(a.TotalLines() < b.TotalLines())
 		})
@@ -60,5 +66,17 @@ func main() {
 	}
 	for _, dup := range duplicates {
 		fmt.Printf("- %s\n", dup)
+	}
+}
+
+func thresholdFunc(thresholdLines int, thresholdPercent int) func(fpm *mostcomm.FilePositionMatch) bool {
+	return func(fpm *mostcomm.FilePositionMatch) bool {
+		if thresholdLines > 0 && thresholdLines > fpm.FilePosition.Lines() {
+			return false
+		}
+		if thresholdPercent > 0 && thresholdPercent > fpm.FilePosition.Percent() {
+			return false
+		}
+		return true
 	}
 }

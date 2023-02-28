@@ -3,6 +3,7 @@ package mostcomm
 import (
 	"crypto/md5"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"hash"
 	"io/fs"
 	"log"
@@ -105,8 +106,8 @@ type FilePosition struct {
 	File       *File
 }
 
-func (p *FilePosition) String() string {
-	return fmt.Sprintf("%s:%d-%d (%d)", p.File.Filename, p.Start.Position, p.End.Position, p.Lines())
+func (fp *FilePosition) String() string {
+	return fmt.Sprintf("%s:%d-%d (%d)", fp.File.Filename, fp.Start.Position, fp.End.Position, fp.Lines())
 }
 
 func (fpm *FilePositionMatch) HashKey() (b [16]byte) {
@@ -114,20 +115,26 @@ func (fpm *FilePositionMatch) HashKey() (b [16]byte) {
 	return
 }
 
-func (p *FilePosition) Duplicate() *Duplicate {
+func (fp *FilePosition) Duplicate() *Duplicate {
 	return &Duplicate{
-		FilePositions: []*FilePosition{p},
-		Head:          p.Start.Hash,
-		Tail:          p.End.Hash,
+		FilePositions: []*FilePosition{fp},
+		Head:          fp.Start.Hash,
+		Tail:          fp.End.Hash,
 	}
 }
 
-func (p *FilePosition) Postions() [2]int {
-	return [2]int{p.Start.Position, p.End.Position}
+func (fp *FilePosition) Postions() [2]int {
+	return [2]int{fp.Start.Position, fp.End.Position}
 }
 
-func (p *FilePosition) Lines() int {
-	return p.End.Position - p.Start.Position + 1
+func (fp *FilePosition) Lines() int {
+	return fp.End.Position - fp.Start.Position + 1
+}
+
+func (fp *FilePosition) Percent() (r int) {
+	r += fp.Lines() * 10000 / fp.File.Count
+	r /= 100
+	return
 }
 
 type Duplicate struct {
@@ -170,13 +177,21 @@ func (d *Duplicate) AverageCoveragePercent() (r int) {
 	return
 }
 
+func (d *Duplicate) Files() []*File {
+	files := map[*File]struct{}{}
+	for _, fp := range d.FilePositions {
+		files[fp.File] = struct{}{}
+	}
+	return maps.Keys(files)
+}
+
 type FilePositionMatch struct {
 	FilePosition *FilePosition
 	With         *Line
 	Hash         hash.Hash
 }
 
-func (d *Data) DetectDuplicates() []*Duplicate {
+func (d *Data) DetectDuplicates(keepFilter func(fpm *FilePositionMatch) bool) []*Duplicate {
 	var dups []*Duplicate
 	ranges := map[[16]byte]*Duplicate{}
 	for _, f := range d.Files {
@@ -227,6 +242,9 @@ func (d *Data) DetectDuplicates() []*Duplicate {
 					d.FilePositions = append(d.FilePositions, fp.FilePosition)
 					continue
 				}
+				if !keepFilter(fp) {
+					continue
+				}
 				d = fp.FilePosition.Duplicate()
 				dups = append(dups, d)
 				ranges[fp.HashKey()] = d
@@ -242,6 +260,9 @@ func (d *Data) DetectDuplicates() []*Duplicate {
 			d, ok := ranges[fp.HashKey()]
 			if ok {
 				d.FilePositions = append(d.FilePositions, fp.FilePosition)
+				continue
+			}
+			if !keepFilter(fp) {
 				continue
 			}
 			d = fp.FilePosition.Duplicate()
