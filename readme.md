@@ -1,8 +1,19 @@
 # Mostcomm
 
-Mostcomm is a command line tool that scans a directory of text files and reports repeated runs of lines across those files. It is useful for finding copy‑pasted blocks, duplicated configuration or just getting an overview of common data in a large corpus.
+Mostcomm is a command line tool that scans a directory of text files and reports
+repeated runs of lines across those files. It is useful for finding copy‑pasted
+blocks, duplicated configuration or just getting an overview of common data in a
+large corpus.
 
-The detection algorithm hashes each line and uses those hashes to build ranges that appear in more than one file. Results can be sorted and filtered to help focus on the most significant duplicates.
+The detection algorithm hashes each line and uses those hashes to build ranges
+that appear in more than one file. Results can be sorted and filtered to help
+focus on the most significant duplicates.
+
+## Why Mostcomm?
+
+* Quickly discover duplicated content across any collection of plain‑text files.
+* Spot configuration drift or repeated boilerplate in large repositories.
+* Identify common patterns in datasets or logs.
 
 ## Features
 
