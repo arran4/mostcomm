@@ -22,6 +22,8 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - mostcomm.1
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -46,3 +48,6 @@ nfpms:
     release: 1
     section: default
     priority: extra
+    contents:
+      - src: mostcomm.1
+        dst: /usr/share/man/man1/mostcomm.1
