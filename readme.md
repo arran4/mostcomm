@@ -39,6 +39,14 @@ go install ./cmd/mostcomm
 
 This will place the `mostcomm` binary in your `GOBIN` (or `$GOPATH/bin`).
 
+The manual page distributed with the releases is generated from
+[`mostcomm.md`](mostcomm.md) using `go-md2man`. You can rebuild it locally with:
+
+```bash
+go install github.com/cpuguy83/go-md2man/v2@latest
+go-md2man -in mostcomm.md -out mostcomm.1
+```
+
 ## Usage
 
 ```

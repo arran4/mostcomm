@@ -1,4 +1,8 @@
 project_name: mostcomm
+before:
+  hooks:
+    - go install github.com/cpuguy83/go-md2man/v2@latest
+    - go-md2man -in mostcomm.md -out mostcomm.1
 builds:
   -
     id: "mostcomm"
