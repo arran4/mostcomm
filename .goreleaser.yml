@@ -1,4 +1,8 @@
 project_name: mostcomm
+before:
+  hooks:
+    - go install github.com/cpuguy83/go-md2man/v2@latest
+    - go-md2man -in mostcomm.md -out mostcomm.1
 builds:
   -
     id: "mostcomm"
@@ -22,6 +26,8 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - mostcomm.1
 checksum:
   name_template: 'checksums.txt'
 snapshot:
@@ -46,3 +52,6 @@ nfpms:
     release: 1
     section: default
     priority: extra
+    contents:
+      - src: mostcomm.1
+        dst: /usr/share/man/man1/mostcomm.1
