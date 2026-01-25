@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"io/fs"
 	"log"
+	"slices"
 	"mostcomm"
 	"os"
 	"strings"
@@ -44,24 +44,24 @@ func main() {
 	if *thresholdMatchMaxFlag >= 0 {
 		duplicates = mostcomm.DeleteMatchMax(duplicates, *thresholdMatchMaxFlag)
 	}
-	direction := func(b bool) bool { return b }
+	compare := func(a, b int) int { return a - b }
 	switch *sortDirectFlag {
 	case "ascending":
 
 	case "descending":
-		direction = func(b bool) bool {
-			return !b
+		compare = func(a, b int) int {
+			return b - a
 		}
 	}
 	switch *sortFlag {
 	case "none":
 	case "lines":
-		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) bool {
-			return direction(a.TotalLines() < b.TotalLines())
+		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) int {
+			return compare(a.TotalLines(), b.TotalLines())
 		})
 	case "average-coverage":
-		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) bool {
-			return direction(a.AverageCoveragePercent() < b.AverageCoveragePercent())
+		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) int {
+			return compare(a.AverageCoveragePercent(), b.AverageCoveragePercent())
 		})
 	}
 	for _, dup := range duplicates {
