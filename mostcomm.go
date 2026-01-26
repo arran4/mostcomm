@@ -3,7 +3,6 @@ package mostcomm
 import (
 	"crypto/md5"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"hash"
 	"io/fs"
 	"log"
@@ -182,7 +181,11 @@ func (d *Duplicate) Files() []*File {
 	for _, fp := range d.FilePositions {
 		files[fp.File] = struct{}{}
 	}
-	return maps.Keys(files)
+	keys := make([]*File, 0, len(files))
+	for k := range files {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 type FilePositionMatch struct {

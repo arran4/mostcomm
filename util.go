@@ -1,6 +1,6 @@
 package mostcomm
 
-import "golang.org/x/exp/slices"
+import "slices"
 
 func DeleteMatchMax(duplicates []*Duplicate, mm int) []*Duplicate {
 	rmFrom, i := -1, 0
