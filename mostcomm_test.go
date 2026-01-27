@@ -49,3 +49,60 @@ func TestDetectDuplicates_Integration(t *testing.T) {
 		}
 	}
 }
+
+func TestDetectDuplicates_CollisionBug(t *testing.T) {
+	// Bug: fp.Hash is not initialized with the first line's hash, but empty hash.
+	// This causes ranges that differ only in the first line to have the same hash
+	// if the subsequent lines are identical.
+
+	// Case:
+	// A: X Y
+	// B: X Y
+	// C: Z Y
+	// D: Z Y
+
+	// We expect:
+	// 1 duplicate group for "X Y" (A and B).
+	// 1 duplicate group for "Z Y" (C and D).
+	// 1 duplicate group for "Y" (A, B, C, D) -- this is a suffix match which is also found.
+	// Total 3 groups (of length >= 2, since Y\n is followed by empty line, it's 2 lines).
+
+	// If bug exists:
+	// "X Y" hash = MD5(H(Y)) (because X is ignored)
+	// "Z Y" hash = MD5(H(Y)) (because Z is ignored)
+	// They collide.
+	// Result: 1 duplicate group containing A, B, C, D (merged).
+	// Plus 1 duplicate group for "Y".
+	// Total 2 groups.
+
+	fsys := fstest.MapFS{
+		"a.txt": {Data: []byte("X\nY\n")},
+		"b.txt": {Data: []byte("X\nY\n")},
+		"c.txt": {Data: []byte("Z\nY\n")},
+		"d.txt": {Data: []byte("Z\nY\n")},
+	}
+
+	data := &mostcomm.Data{
+		Files:       map[string]*mostcomm.File{},
+		Lines:       map[[16]byte][]*mostcomm.Line{},
+		WalkerGroup: sync.WaitGroup{},
+		FS:          fsys,
+		LineMutex:   sync.Mutex{},
+	}
+
+	if err := fs.WalkDir(fsys, ".", mostcomm.Walker(data, []string{"*.txt"})); err != nil {
+		t.Fatalf("WalkDir failed: %v", err)
+	}
+	data.WalkerGroup.Wait()
+
+	duplicates := data.DetectDuplicates(func(fpm *mostcomm.FilePositionMatch) bool {
+		return fpm.FilePosition.Lines() >= 2
+	})
+
+	if len(duplicates) != 3 {
+		t.Errorf("Expected 3 duplicates (of length >= 2), got %d", len(duplicates))
+		for _, d := range duplicates {
+			t.Logf("Dup: %s", d)
+		}
+	}
+}

@@ -217,7 +217,7 @@ func (d *Data) DetectDuplicates(keepFilter func(fpm *FilePositionMatch) bool) []
 					Hash: md5.New(),
 					With: l,
 				}
-				fp.Hash.Sum(p.Hash[:])
+				fp.Hash.Write(p.Hash[:])
 				missedLines[l] = fp
 			}
 			for _, fp := range matches {
