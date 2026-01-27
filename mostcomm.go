@@ -1,9 +1,11 @@
 package mostcomm
 
 import (
+	"bufio"
 	"crypto/md5"
 	"fmt"
 	"hash"
+	"io"
 	"io/fs"
 	"log"
 	"path/filepath"
@@ -26,42 +28,69 @@ func (f *File) Read(c chan struct{}) {
 		f.Data.WalkerGroup.Done()
 		<-c
 	}()
-	b, err := fs.ReadFile(f.Data.FS, f.Filename)
+
+	file, err := f.Data.FS.Open(f.Filename)
 	if err != nil {
 		log.Panic(err)
 	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
 	lines := make([]*Line, 0, 1024)
 	var prev *Line
-	for i, first, last := 0, 0, 0; i <= len(b); i++ {
-		var r byte = '\n'
-		if i < len(b) {
-			r = b[i]
+
+	var longLine []byte
+	for {
+		b, err := reader.ReadSlice('\n')
+		var content []byte
+
+		if err == bufio.ErrBufferFull {
+			// Handle long line
+			longLine = append(longLine[:0], b...)
+			for err == bufio.ErrBufferFull {
+				b, err = reader.ReadSlice('\n')
+				longLine = append(longLine, b...)
+			}
+			content = longLine
+		} else {
+			content = b
 		}
-		switch r {
-		case '\r':
-		case '\n':
-			l := &Line{
-				File:     f,
-				Prev:     prev,
-				Position: f.Count,
-				Hash:     md5.Sum(b[first : last+1]),
-			}
-			f.Count++
-			if prev != nil {
-				prev.Next = l
-			} else {
-				f.Head = l
-			}
-			lines = append(lines, l)
-			if len(lines) >= 1024 {
-				f.Data.Add(lines)
-				lines = lines[:0]
-			}
-			prev = l
-			first = i + 1
-			last = i
-		default:
-			last = i
+
+		if err != nil && err != io.EOF {
+			log.Panic(err)
+		}
+
+		if err == nil {
+			// Ends with \n, strip it
+			content = content[:len(content)-1]
+		}
+
+		// Strip trailing \r
+		for len(content) > 0 && content[len(content)-1] == '\r' {
+			content = content[:len(content)-1]
+		}
+
+		l := &Line{
+			File:     f,
+			Prev:     prev,
+			Position: f.Count,
+			Hash:     md5.Sum(content),
+		}
+		f.Count++
+		if prev != nil {
+			prev.Next = l
+		} else {
+			f.Head = l
+		}
+		lines = append(lines, l)
+		if len(lines) >= 1024 {
+			f.Data.Add(lines)
+			lines = lines[:0]
+		}
+		prev = l
+
+		if err == io.EOF {
+			break
 		}
 	}
 	f.Tail = prev
