@@ -1,6 +1,8 @@
 package mostcomm_test
 
 import (
+	"bytes"
+	"fmt"
 	"io/fs"
 	"mostcomm"
 	"sync"
@@ -47,5 +49,40 @@ func TestDetectDuplicates_Integration(t *testing.T) {
 		for _, d := range duplicates {
 			t.Logf("Dup: %s", d)
 		}
+	}
+}
+
+func BenchmarkDetectDuplicates(b *testing.B) {
+	// Generate some data
+	// We want enough data to trigger many allocations.
+	// 10 files, each with 1000 lines. Some duplicates.
+	fsys := fstest.MapFS{}
+	for i := 0; i < 20; i++ {
+		var buf bytes.Buffer
+		for j := 0; j < 500; j++ {
+			// Create repeating patterns to ensure duplicates are found
+			fmt.Fprintf(&buf, "line content %d\n", j%50)
+		}
+		fsys[fmt.Sprintf("file%d.txt", i)] = &fstest.MapFile{Data: buf.Bytes()}
+	}
+
+	data := &mostcomm.Data{
+		Files:       map[string]*mostcomm.File{},
+		Lines:       map[[16]byte][]*mostcomm.Line{},
+		WalkerGroup: sync.WaitGroup{},
+		FS:          fsys,
+		LineMutex:   sync.Mutex{},
+	}
+
+	if err := fs.WalkDir(fsys, ".", mostcomm.Walker(data, []string{"*.txt"})); err != nil {
+		b.Fatalf("WalkDir failed: %v", err)
+	}
+	data.WalkerGroup.Wait()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_ = data.DetectDuplicates(func(fpm *mostcomm.FilePositionMatch) bool { return true })
 	}
 }

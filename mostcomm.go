@@ -12,6 +12,24 @@ import (
 	"sync"
 )
 
+var md5Pool = sync.Pool{
+	New: func() interface{} {
+		return md5.New()
+	},
+}
+
+func acquireHash() hash.Hash {
+	h := md5Pool.Get().(hash.Hash)
+	h.Reset()
+	return h
+}
+
+func releaseHash(h hash.Hash) {
+	if h != nil {
+		md5Pool.Put(h)
+	}
+}
+
 type File struct {
 	Head     *Line
 	Tail     *Line
@@ -214,7 +232,7 @@ func (d *Data) DetectDuplicates(keepFilter func(fpm *FilePositionMatch) bool) []
 						End:   p,
 						File:  f,
 					},
-					Hash: md5.New(),
+					Hash: acquireHash(),
 					With: l,
 				}
 				fp.Hash.Sum(p.Hash[:])
@@ -222,15 +240,21 @@ func (d *Data) DetectDuplicates(keepFilter func(fpm *FilePositionMatch) bool) []
 			}
 			for _, fp := range matches {
 				if fp.With != nil && fp.With.Next != nil {
-					delete(missedLines, fp.With.Next)
+					if oldVal, ok := missedLines[fp.With.Next]; ok {
+						releaseHash(oldVal.Hash)
+						delete(missedLines, fp.With.Next)
+					}
 					if fp.With.Next.Hash == p.Hash {
 						fp.Next(p)
 						nextMatches = append(nextMatches, fp)
+						// Match extended, keep hash and continue to next iteration.
+						// We must NOT fall through to seenPos check or release logic.
 						continue
 					}
 				}
 				_, ok := seenPos[fp.Positions()]
 				if ok {
+					releaseHash(fp.Hash)
 					continue
 				}
 				seenPos[fp.Positions()] = struct{}{}
@@ -243,34 +267,41 @@ func (d *Data) DetectDuplicates(keepFilter func(fpm *FilePositionMatch) bool) []
 				d, ok := ranges[fp.HashKey()]
 				if ok {
 					d.FilePositions = append(d.FilePositions, fp.FilePosition)
+					releaseHash(fp.Hash)
 					continue
 				}
 				if !keepFilter(fp) {
+					releaseHash(fp.Hash)
 					continue
 				}
 				d = fp.FilePosition.Duplicate()
 				dups = append(dups, d)
 				ranges[fp.HashKey()] = d
+				releaseHash(fp.Hash)
 			}
 			matches = nextMatches
 		}
 		for _, fp := range matches {
 			_, ok := seenPos[fp.Positions()]
 			if ok {
+				releaseHash(fp.Hash)
 				continue
 			}
 			seenPos[fp.Positions()] = struct{}{}
 			d, ok := ranges[fp.HashKey()]
 			if ok {
 				d.FilePositions = append(d.FilePositions, fp.FilePosition)
+				releaseHash(fp.Hash)
 				continue
 			}
 			if !keepFilter(fp) {
+				releaseHash(fp.Hash)
 				continue
 			}
 			d = fp.FilePosition.Duplicate()
 			dups = append(dups, d)
 			ranges[fp.HashKey()] = d
+			releaseHash(fp.Hash)
 		}
 	}
 	return dups
