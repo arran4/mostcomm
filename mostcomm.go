@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -82,6 +83,7 @@ type Data struct {
 	WalkerGroup sync.WaitGroup
 	FS          fs.FS
 	LineMutex   sync.Mutex
+	Concurrency int
 }
 
 func (d *Data) Add(lines []*Line) {
@@ -289,7 +291,11 @@ func (fpm *FilePositionMatch) Positions() [2]int {
 var _ fmt.Stringer = (*Duplicate)(nil)
 
 func Walker(data *Data, masks []string) fs.WalkDirFunc {
-	c := make(chan struct{}, 25)
+	limit := data.Concurrency
+	if limit <= 0 {
+		limit = runtime.NumCPU()
+	}
+	c := make(chan struct{}, limit)
 	return func(path string, d fs.DirEntry, err error) error {
 		if d != nil && d.IsDir() {
 			return nil

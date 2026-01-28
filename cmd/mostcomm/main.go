@@ -20,6 +20,7 @@ var (
 	thresholdPercentFlag  = flag.Int("percent-threshold", 0, "Minimum required % of the file in common")
 	thresholdLinesFlag    = flag.Int("lines-threshold", 0, "Minimum required lines of the file in common")
 	thresholdMatchMaxFlag = flag.Int("match-max-threshold", -1, "Maximum time a match is allowed")
+	concurrencyFlag       = flag.Int("concurrency", 0, "Concurrency limit (default 0 = number of CPUs)")
 )
 
 func main() {
@@ -30,6 +31,7 @@ func main() {
 		WalkerGroup: sync.WaitGroup{},
 		FS:          os.DirFS(*dirFlag),
 		LineMutex:   sync.Mutex{},
+		Concurrency: *concurrencyFlag,
 	}
 	if err := fs.WalkDir(data.FS, ".", mostcomm.Walker(data, strings.Split(*fileMaskFlag, ";"))); err != nil {
 		log.Panic(err)
