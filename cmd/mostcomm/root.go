@@ -5,10 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
-
-	"mostcomm/cmd/mostcomm/templates"
 )
 
 type Cmd interface {
@@ -43,10 +40,6 @@ func (e *UserError) Error() string {
 
 func NewUserError(err error, msg string) *UserError {
 	return &UserError{Err: err, Msg: msg}
-}
-
-func executeUsage(out io.Writer, templateName string, data interface{}) error {
-	return templates.GetTemplates().ExecuteTemplate(out, templateName, data)
 }
 
 type RootCmd struct {
