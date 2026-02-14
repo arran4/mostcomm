@@ -1,1 +1,9 @@
 Usage: {{.Name}} [flags]
+{{if .Description}}
+{{.Description}}
+{{end}}
+Flags:
+{{.FlagsString}}
+Commands:
+{{range $name, $cmd := .Commands}}  {{$name}}
+{{end}}

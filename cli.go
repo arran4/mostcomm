@@ -1,10 +1,9 @@
-package main
+package mostcomm
 
 import (
 	"fmt"
 	"io/fs"
 	"log"
-	"mostcomm"
 	"os"
 	"slices"
 	"strings"
@@ -12,6 +11,8 @@ import (
 )
 
 // Run is a subcommand `mostcomm`
+//
+// Detects duplicates in files based on common lines.
 //
 // Flags:
 //
@@ -24,15 +25,15 @@ import (
 //	thresholdMatchMax: --match-max-threshold (default: -1)        Maximum time a match is allowed
 //	concurrency:       --concurrency       (default: 0)           Concurrency limit (default 0 = number of CPUs)
 func Run(dir, fileMask, sort, sortDirect string, thresholdPercent, thresholdLines, thresholdMatchMax, concurrency int) {
-	data := &mostcomm.Data{
-		Files:       map[string]*mostcomm.File{},
-		Lines:       map[[16]byte][]*mostcomm.Line{},
+	data := &Data{
+		Files:       map[string]*File{},
+		Lines:       map[[16]byte][]*Line{},
 		WalkerGroup: sync.WaitGroup{},
 		FS:          os.DirFS(dir),
 		LineMutex:   sync.Mutex{},
 		Concurrency: concurrency,
 	}
-	if err := fs.WalkDir(data.FS, ".", mostcomm.Walker(data, strings.Split(fileMask, ";"))); err != nil {
+	if err := fs.WalkDir(data.FS, ".", Walker(data, strings.Split(fileMask, ";"))); err != nil {
 		log.Panic(err)
 	}
 	data.WalkerGroup.Wait()
@@ -43,7 +44,7 @@ func Run(dir, fileMask, sort, sortDirect string, thresholdPercent, thresholdLine
 	duplicates := data.DetectDuplicates(thresholdFunc(thresholdPercent, thresholdLines))
 	fmt.Printf("%d Duplicate founds\n", len(duplicates))
 	if thresholdMatchMax >= 0 {
-		duplicates = mostcomm.DeleteMatchMax(duplicates, thresholdMatchMax)
+		duplicates = DeleteMatchMax(duplicates, thresholdMatchMax)
 	}
 	compare := func(a, b int) int { return a - b }
 	switch sortDirect {
@@ -57,11 +58,11 @@ func Run(dir, fileMask, sort, sortDirect string, thresholdPercent, thresholdLine
 	switch sort {
 	case "none":
 	case "lines":
-		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) int {
+		slices.SortFunc(duplicates, func(a, b *Duplicate) int {
 			return compare(a.TotalLines(), b.TotalLines())
 		})
 	case "average-coverage":
-		slices.SortFunc(duplicates, func(a, b *mostcomm.Duplicate) int {
+		slices.SortFunc(duplicates, func(a, b *Duplicate) int {
 			return compare(a.AverageCoveragePercent(), b.AverageCoveragePercent())
 		})
 	}
@@ -70,8 +71,8 @@ func Run(dir, fileMask, sort, sortDirect string, thresholdPercent, thresholdLine
 	}
 }
 
-func thresholdFunc(thresholdLines int, thresholdPercent int) func(fpm *mostcomm.FilePositionMatch) bool {
-	return func(fpm *mostcomm.FilePositionMatch) bool {
+func thresholdFunc(thresholdLines int, thresholdPercent int) func(fpm *FilePositionMatch) bool {
+	return func(fpm *FilePositionMatch) bool {
 		if thresholdLines > 0 && thresholdLines > fpm.FilePosition.Lines() {
 			return false
 		}

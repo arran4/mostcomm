@@ -3,9 +3,14 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+
+	"mostcomm"
+	"mostcomm/cmd/mostcomm/templates"
 )
 
 type Cmd interface {
@@ -42,9 +47,14 @@ func NewUserError(err error, msg string) *UserError {
 	return &UserError{Err: err, Msg: msg}
 }
 
+func executeUsage(out io.Writer, templateName string, data interface{}) error {
+	return templates.GetTemplates().ExecuteTemplate(out, templateName, data)
+}
+
 type RootCmd struct {
 	*flag.FlagSet
 	Commands          map[string]Cmd
+	Description       string
 	Version           string
 	Commit            string
 	Date              string
@@ -60,11 +70,8 @@ type RootCmd struct {
 }
 
 func (c *RootCmd) Usage() {
-	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-	c.FlagSet.PrintDefaults()
-	fmt.Fprintln(os.Stderr, "  Commands:")
-	for name := range c.Commands {
-		fmt.Fprintf(os.Stderr, "    %s\n", name)
+	if err := executeUsage(os.Stderr, "usage.txt", c); err != nil {
+		fmt.Fprintf(os.Stderr, "Usage error: %v\n", err)
 	}
 }
 
@@ -74,19 +81,28 @@ func (c *RootCmd) UsageRecursive() {
 	fmt.Fprintln(os.Stderr, "  Commands:")
 }
 
+func (c *RootCmd) FlagsString() string {
+	var b bytes.Buffer
+	c.FlagSet.SetOutput(&b)
+	c.FlagSet.PrintDefaults()
+	c.FlagSet.SetOutput(os.Stderr)
+	return b.String()
+}
+
 func NewRoot(name, version, commit, date string) (*RootCmd, error) {
 	c := &RootCmd{
-		FlagSet:  flag.NewFlagSet(name, flag.ExitOnError),
-		Commands: make(map[string]Cmd),
-		Version:  version,
-		Commit:   commit,
-		Date:     date,
+		FlagSet:     flag.NewFlagSet(name, flag.ExitOnError),
+		Commands:    make(map[string]Cmd),
+		Description: "Detects duplicates in files based on common lines.",
+		Version:     version,
+		Commit:      commit,
+		Date:        date,
 	}
 	c.FlagSet.Usage = c.Usage
 
 	c.StringVar(&c.dir, "dir", ".", "Directory to scan")
 
-	c.StringVar(&c.fileMask, "mask", "*.txt", "File glob mask to scan. separated")
+	c.StringVar(&c.fileMask, "mask", "*.txt", "File glob mask to scan, separated")
 
 	c.StringVar(&c.sort, "sort", "none", "Sorting order, algorithms; none, lines, average-coverage")
 
@@ -98,11 +114,11 @@ func NewRoot(name, version, commit, date string) (*RootCmd, error) {
 
 	c.IntVar(&c.thresholdMatchMax, "match-max-threshold", -1, "Maximum time a match is allowed")
 
-	c.IntVar(&c.concurrency, "concurrency", 0, "Concurrency limit default 0 = number of CPUs")
+	c.IntVar(&c.concurrency, "concurrency", 0, "Concurrency limit (default 0 = number of CPUs)")
 
 	c.CommandAction = func(c *RootCmd) error {
 
-		Run(c.dir, c.fileMask, c.sort, c.sortDirect, c.thresholdPercent, c.thresholdLines, c.thresholdMatchMax, c.concurrency)
+		mostcomm.Run(c.dir, c.fileMask, c.sort, c.sortDirect, c.thresholdPercent, c.thresholdLines, c.thresholdMatchMax, c.concurrency)
 		return nil
 	}
 
