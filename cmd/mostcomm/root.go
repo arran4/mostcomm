@@ -75,18 +75,18 @@ func (c *RootCmd) Usage() {
 	}
 }
 
-func (c *RootCmd) UsageRecursive() {
-	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-	c.FlagSet.PrintDefaults()
-	fmt.Fprintln(os.Stderr, "  Commands:")
-}
-
 func (c *RootCmd) FlagsString() string {
 	var b bytes.Buffer
 	c.FlagSet.SetOutput(&b)
 	c.FlagSet.PrintDefaults()
 	c.FlagSet.SetOutput(os.Stderr)
 	return b.String()
+}
+
+func (c *RootCmd) UsageRecursive() {
+	fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+	c.FlagSet.PrintDefaults()
+	fmt.Fprintln(os.Stderr, "  Commands:")
 }
 
 func NewRoot(name, version, commit, date string) (*RootCmd, error) {

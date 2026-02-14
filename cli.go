@@ -17,7 +17,7 @@ import (
 // Flags:
 //
 //	dir:               --dir               (default: ".")         Directory to scan
-//	fileMask:          --mask              (default: "*.txt")     File glob mask to scan. , separated
+//	fileMask:          --mask              (default: "*.txt")     File glob mask to scan, separated
 //	sort:              --sort              (default: "none")      Sorting order, algorithms; none, lines, average-coverage
 //	sortDirect:        --sort-direction    (default: "ascending") Sorting direction, algorithms; ascending, descending
 //	thresholdPercent:  --percent-threshold (default: 0)           Minimum required % of the file in common
