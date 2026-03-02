@@ -29,26 +29,26 @@ archives:
       - mostcomm.1
 dockers:
   - image_templates:
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
     dockerfile: Dockerfile
     use: buildx
     goos: linux
     goarch: amd64
   - image_templates:
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
     dockerfile: Dockerfile
     use: buildx
     goos: linux
     goarch: arm64
 docker_manifests:
-  - name_template: "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}"
     image_templates:
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:latest"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest"
     image_templates:
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Repo }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
 checksum:
   name_template: 'checksums.txt'
 snapshot:
