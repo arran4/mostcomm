@@ -49,3 +49,16 @@ func TestDetectDuplicates_Integration(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkFilePositionString(b *testing.B) {
+	fp := &mostcomm.FilePosition{
+		Start: &mostcomm.Line{Position: 100},
+		End:   &mostcomm.Line{Position: 200},
+		File:  &mostcomm.File{Filename: "path/to/some/long/filename.go"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = fp.String()
+	}
+}

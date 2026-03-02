@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -108,7 +109,16 @@ type FilePosition struct {
 }
 
 func (fp *FilePosition) String() string {
-	return fmt.Sprintf("%s:%d-%d (%d)", fp.File.Filename, fp.Start.Position, fp.End.Position, fp.Lines())
+	b := make([]byte, 0, len(fp.File.Filename)+30)
+	b = append(b, fp.File.Filename...)
+	b = append(b, ':')
+	b = strconv.AppendInt(b, int64(fp.Start.Position), 10)
+	b = append(b, '-')
+	b = strconv.AppendInt(b, int64(fp.End.Position), 10)
+	b = append(b, " ("...)
+	b = strconv.AppendInt(b, int64(fp.Lines()), 10)
+	b = append(b, ')')
+	return string(b)
 }
 
 func (fpm *FilePositionMatch) HashKey() (b [16]byte) {
