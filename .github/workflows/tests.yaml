@@ -4,6 +4,8 @@ jobs:
     test:
         runs-on: ubuntu-latest
         steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
             - name: Install Go
               uses: actions/setup-go@v5
               with:
@@ -18,8 +20,6 @@ jobs:
                 key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
                 restore-keys: |
                   ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-            - name: Checkout code
-              uses: actions/checkout@v4
             - name: Test
               run: |
                 go mod download
