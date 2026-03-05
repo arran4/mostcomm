@@ -53,12 +53,6 @@ checksum:
   name_template: 'checksums.txt'
 snapshot:
   version_template: "{{ .Tag }}-next"
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
 nfpms:
   -
     vendor: Ubels Software Development
