@@ -78,7 +78,7 @@ nfpms:
     contents:
       - src: mostcomm.1
         dst: /usr/share/man/man1/mostcomm.1
-brews:
+homebrew_casks:
   -
     repository:
       owner: arran4
