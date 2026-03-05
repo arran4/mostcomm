@@ -83,6 +83,7 @@ brews:
     repository:
       owner: arran4
       name: homebrew-tap
+      branch: "{{.ProjectName}}-{{.Version}}"
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
       pull_request:
         enabled: true
