@@ -78,3 +78,13 @@ nfpms:
     contents:
       - src: mostcomm.1
         dst: /usr/share/man/man1/mostcomm.1
+brews:
+  -
+    repository:
+      owner: arran4
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token_type: "github"
+      pull_request:
+        enabled: true
+        draft: false
