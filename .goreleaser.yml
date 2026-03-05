@@ -53,12 +53,6 @@ checksum:
   name_template: 'checksums.txt'
 snapshot:
   version_template: "{{ .Tag }}-next"
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
 nfpms:
   -
     vendor: Ubels Software Development
@@ -78,13 +72,16 @@ nfpms:
     contents:
       - src: mostcomm.1
         dst: /usr/share/man/man1/mostcomm.1
-brews:
+homebrew_casks:
   -
     repository:
       owner: arran4
       name: homebrew-tap
+      branch: "{{.ProjectName}}-{{.Version}}"
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-      token_type: "github"
       pull_request:
         enabled: true
         draft: false
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
