@@ -13,17 +13,33 @@ import (
 )
 
 var (
-	dirFlag               = flag.String("dir", ".", "Directory to scan")
-	fileMaskFlag          = flag.String("mask", "*.txt", "File glob mask to scan. , separated")
-	sortFlag              = flag.String("sort", "none", "Sorting order, algorithms; none, lines, average-coverage")
-	sortDirectFlag        = flag.String("sort-direction", "ascending", "Sorting direction, algorithms; ascending, descending")
-	thresholdPercentFlag  = flag.Int("percent-threshold", 0, "Minimum required % of the file in common")
-	thresholdLinesFlag    = flag.Int("lines-threshold", 0, "Minimum required lines of the file in common")
-	thresholdMatchMaxFlag = flag.Int("match-max-threshold", -1, "Maximum time a match is allowed")
-	concurrencyFlag       = flag.Int("concurrency", 0, "Concurrency limit (default 0 = number of CPUs)")
+	dirFlag               *string
+	fileMaskFlag          *string
+	sortFlag              *string
+	sortDirectFlag        *string
+	thresholdPercentFlag  *int
+	thresholdLinesFlag    *int
+	thresholdMatchMaxFlag *int
+	concurrencyFlag       *int
 )
 
+func init() {
+	dirFlag = flag.String("dir", ".", "Directory to scan")
+	fileMaskFlag = flag.String("mask", "*.txt", "File glob mask to scan. , separated")
+	sortFlag = flag.String("sort", "none", "Sorting order, algorithms; none, lines, average-coverage")
+	sortDirectFlag = flag.String("sort-direction", "ascending", "Sorting direction, algorithms; ascending, descending")
+	thresholdPercentFlag = flag.Int("percent-threshold", 0, "Minimum required % of the file in common")
+	thresholdLinesFlag = flag.Int("lines-threshold", 0, "Minimum required lines of the file in common")
+	thresholdMatchMaxFlag = flag.Int("match-max-threshold", -1, "Maximum time a match is allowed")
+	concurrencyFlag = flag.Int("concurrency", 0, "Concurrency limit (default 0 = number of CPUs)")
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "skill" {
+		handleSkillCommand(os.Args[2:])
+		return
+	}
+
 	flag.Parse()
 	data := &mostcomm.Data{
 		Files:       map[string]*mostcomm.File{},
