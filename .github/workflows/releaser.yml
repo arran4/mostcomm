@@ -10,8 +10,7 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   test:
@@ -64,10 +63,13 @@ jobs:
   goreleaser:
     needs: [test, lint]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Validate Tag Format
         run: |
-          [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][a-zA-Z0-9]+)*$ ]] || { echo "Invalid tag format"; exit 1; }
+          [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(rc|alpha|beta|test)(\.[0-9]+)?)?$ ]] || { echo "Invalid tag format"; exit 1; }
       - name: Checkout
         uses: actions/checkout@v4
         with:
