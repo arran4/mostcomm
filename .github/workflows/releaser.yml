@@ -60,16 +60,22 @@ jobs:
         with:
           version: latest
 
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Tag Format
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid tag format"; exit 1; }
+
   goreleaser:
-    needs: [test, lint]
+    needs: [validate-tag, test, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
     steps:
-      - name: Validate Tag Format
-        run: |
-          [[ "${{ github.ref_name }}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid tag format"; exit 1; }
       - name: Checkout
         uses: actions/checkout@v4
         with:
