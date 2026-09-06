@@ -1,13 +1,19 @@
 # Guidance references:
 # - https://arran4.github.io/blog/post/2026/042-simplified-github-ci-release-safe/
 # - https://arran4.github.io/blog/post/2026/041-release-safe-single-owner-github-ci/
+# - https://github.com/arran4/blog/issues/126
 
-name: goreleaser
+name: CI/CD
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*.*.*'
+  pull_request:
+    branches:
+      - '**'
 
 permissions:
   contents: read
@@ -61,6 +67,7 @@ jobs:
           version: latest
 
   validate-tag:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Validate Tag Format
@@ -70,6 +77,7 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid tag format"; exit 1; }
 
   goreleaser:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [validate-tag, test, lint]
     runs-on: ubuntu-latest
     permissions:
