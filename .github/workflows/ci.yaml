@@ -14,12 +14,74 @@ on:
   pull_request:
     branches:
       - '**'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Pipeline mode
+        required: true
+        type: choice
+        default: release-patch
+        options:
+          - release-major
+          - release-minor
+          - release-patch
+          - publish-tag
+      release_version_override:
+        description: Optional exact version/tag for explicit release or recovery
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  route:
+    runs-on: ubuntu-latest
+    outputs:
+      IS_MANUAL_RELEASE: ${{ steps.router.outputs.IS_MANUAL_RELEASE }}
+      IS_PUBLISH_TAG: ${{ steps.router.outputs.IS_PUBLISH_TAG }}
+      IS_EXTERNAL_TAG: ${{ steps.router.outputs.IS_EXTERNAL_TAG }}
+    steps:
+      - name: Route Request
+        id: router
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          IS_MANUAL_RELEASE="false"
+          IS_PUBLISH_TAG="false"
+          IS_EXTERNAL_TAG="false"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ "$MODE" == release-* ]]; then
+              if [ "$REF_NAME" != "main" ]; then
+                echo "Manual release must run on main branch"
+                exit 1
+              fi
+              IS_MANUAL_RELEASE="true"
+            elif [ "$MODE" = "publish-tag" ]; then
+              if [ "$REF_TYPE" != "tag" ]; then
+                echo "publish-tag mode must run on a tag ref, got $REF_TYPE"
+                exit 1
+              fi
+              IS_PUBLISH_TAG="true"
+            else
+              echo "Unknown mode: $MODE"
+              exit 1
+            fi
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            IS_EXTERNAL_TAG="true"
+          fi
+
+          echo "IS_MANUAL_RELEASE=$IS_MANUAL_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "IS_PUBLISH_TAG=$IS_PUBLISH_TAG" >> "$GITHUB_OUTPUT"
+          echo "IS_EXTERNAL_TAG=$IS_EXTERNAL_TAG" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: [route]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -44,6 +106,7 @@ jobs:
           go test ./...
 
   lint:
+    needs: [route]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,18 +130,153 @@ jobs:
           version: latest
 
   validate-tag:
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [route]
+    if: needs.route.outputs.IS_PUBLISH_TAG == 'true' || needs.route.outputs.IS_EXTERNAL_TAG == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Validate Tag Format
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid tag format"; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid tag format: $RELEASE_TAG"; exit 1; }
+
+  manual-release-tag:
+    needs: [route, test, lint]
+    if: needs.route.outputs.IS_MANUAL_RELEASE == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Target Version
+        id: versioning
+        env:
+          OVERRIDE: ${{ inputs.release_version_override }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            TAG="$OVERRIDE"
+            # Normalize to start with v
+            if [[ ! "$TAG" =~ ^v ]]; then
+              TAG="v$TAG"
+            fi
+            # Validate canonical format
+            [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Override invalid tag format: $TAG"; exit 1; }
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            echo "IS_OVERRIDE=true" >> "$GITHUB_ENV"
+          else
+            # First, check if the current commit already has a stable release tag
+            git fetch origin "+refs/tags/*:refs/tags/*" || true
+            EXISTING_TAGS=$(git tag --points-at HEAD)
+            for etag in $EXISTING_TAGS; do
+              if [[ "$etag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                echo "Error: The current commit already has a stable release tag: $etag"
+                echo "If you are trying to retry a failed release, please use the release_version_override input with '$etag'."
+                exit 1
+              fi
+            done
+
+            if [ "$MODE" = "release-major" ]; then
+              INC_ACTION="major"
+            elif [ "$MODE" = "release-minor" ]; then
+              INC_ACTION="minor"
+            elif [ "$MODE" = "release-patch" ]; then
+              INC_ACTION="patch"
+            else
+              echo "Invalid mode for version increment: $MODE"
+              exit 1
+            fi
+
+            go install github.com/arran4/git-tag-inc@latest
+            TAG=$($(go env GOPATH)/bin/git-tag-inc $INC_ACTION)
+
+            # Validate canonical format
+            [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Calculated invalid tag format: $TAG"; exit 1; }
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            echo "IS_OVERRIDE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify Remote Tag State
+        env:
+          RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
+          IS_OVERRIDE: ${{ env.IS_OVERRIDE }}
+        run: |
+          EXPECTED_SHA=$(git rev-parse HEAD)
+
+          # Query remote directly for truth
+          REMOTE_OUT=$(git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" || true)
+
+          if [ -n "$REMOTE_OUT" ]; then
+            # Tag exists remotely
+            # Extract SHA (peel lightweight or annotated tags)
+            REMOTE_SHA=$(echo "$REMOTE_OUT" | awk '{print $1}')
+            # We might have both refs/tags/v1.2.3 and refs/tags/v1.2.3^{}. We want the peeled one if annotated, or the plain one if lightweight.
+            # A safer way to check commit match is to fetch it and verify its commit object.
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            ACTUAL_SHA=$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")
+
+            if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+               echo "Error: Tag $RELEASE_TAG already exists and points to $ACTUAL_SHA, not expected commit $EXPECTED_SHA."
+               exit 1
+            fi
+
+            echo "Tag $RELEASE_TAG already exists at expected commit $EXPECTED_SHA. Skipping creation."
+            echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            # Tag does NOT exist remotely
+            if [ "$IS_OVERRIDE" = "true" ]; then
+               echo "Error: release_version_override was provided ($RELEASE_TAG), but this tag does not exist remotely."
+               echo "Overrides must only be used to retry an existing release tag on its original commit."
+               exit 1
+            fi
+            echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create and Push Tag
+        if: env.TAG_EXISTS == 'false'
+        env:
+          RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+
+      - name: Verify Tag Exists on Remote
+        env:
+          RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
+        run: |
+          REMOTE_OUT=$(git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" || true)
+          if [ -z "$REMOTE_OUT" ]; then
+            echo "Failed to verify tag $RELEASE_TAG on remote."
+            exit 1
+          fi
+
+          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          ACTUAL_SHA=$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")
+          EXPECTED_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Error: Pushed tag $RELEASE_TAG points to $ACTUAL_SHA instead of expected $EXPECTED_SHA."
+            exit 1
+          fi
+
+      - name: Dispatch Publish Job
+        env:
+          RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run ci.yaml --ref "$RELEASE_TAG" -f mode=publish-tag
 
   goreleaser:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [validate-tag, test, lint]
+    needs: [route, validate-tag, test, lint]
+    if: needs.route.outputs.IS_PUBLISH_TAG == 'true' || needs.route.outputs.IS_EXTERNAL_TAG == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
