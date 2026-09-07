@@ -165,6 +165,11 @@ jobs:
             if [[ ! "$TAG" =~ ^v ]]; then
               TAG="v$TAG"
             fi
+            # Validate canonical format
+            [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Override invalid tag format: $TAG"; exit 1; }
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            echo "IS_OVERRIDE=true" >> "$GITHUB_ENV"
           else
             # First, check if the current commit already has a stable release tag
             git fetch origin "+refs/tags/*:refs/tags/*" || true
@@ -190,32 +195,48 @@ jobs:
 
             go install github.com/arran4/git-tag-inc@latest
             TAG=$($(go env GOPATH)/bin/git-tag-inc $INC_ACTION)
-          fi
 
-          # Validate canonical format
-          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Calculated invalid tag format: $TAG"; exit 1; }
-          echo "RELEASE_TAG=$TAG" >> "$GITHUB_OUTPUT"
-          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            # Validate canonical format
+            [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Calculated invalid tag format: $TAG"; exit 1; }
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_OUTPUT"
+            echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            echo "IS_OVERRIDE=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Verify Remote Tag State
         env:
           RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
+          IS_OVERRIDE: ${{ env.IS_OVERRIDE }}
         run: |
-          git fetch origin "+refs/tags/*:refs/tags/*" || true
           EXPECTED_SHA=$(git rev-parse HEAD)
 
-          if git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+          # Query remote directly for truth
+          REMOTE_OUT=$(git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" || true)
+
+          if [ -n "$REMOTE_OUT" ]; then
+            # Tag exists remotely
+            # Extract SHA (peel lightweight or annotated tags)
+            REMOTE_SHA=$(echo "$REMOTE_OUT" | awk '{print $1}')
+            # We might have both refs/tags/v1.2.3 and refs/tags/v1.2.3^{}. We want the peeled one if annotated, or the plain one if lightweight.
+            # A safer way to check commit match is to fetch it and verify its commit object.
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
             ACTUAL_SHA=$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")
+
             if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-               echo "Tag $RELEASE_TAG already exists and points to $ACTUAL_SHA, not $EXPECTED_SHA."
-               echo "If this is a recovery scenario, ensure you are releasing the exact commit of the tag."
+               echo "Error: Tag $RELEASE_TAG already exists and points to $ACTUAL_SHA, not expected commit $EXPECTED_SHA."
                exit 1
-            else
-               echo "Tag $RELEASE_TAG already exists at expected commit $EXPECTED_SHA. Skipping creation."
-               echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
             fi
+
+            echo "Tag $RELEASE_TAG already exists at expected commit $EXPECTED_SHA. Skipping creation."
+            echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
           else
-             echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
+            # Tag does NOT exist remotely
+            if [ "$IS_OVERRIDE" = "true" ]; then
+               echo "Error: release_version_override was provided ($RELEASE_TAG), but this tag does not exist remotely."
+               echo "Overrides must only be used to retry an existing release tag on its original commit."
+               exit 1
+            fi
+            echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
           fi
 
       - name: Create and Push Tag
@@ -232,9 +253,17 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.versioning.outputs.RELEASE_TAG }}
         run: |
-          git fetch origin "+refs/tags/*:refs/tags/*"
-          if ! git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+          REMOTE_OUT=$(git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" || true)
+          if [ -z "$REMOTE_OUT" ]; then
             echo "Failed to verify tag $RELEASE_TAG on remote."
+            exit 1
+          fi
+
+          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          ACTUAL_SHA=$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")
+          EXPECTED_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Error: Pushed tag $RELEASE_TAG points to $ACTUAL_SHA instead of expected $EXPECTED_SHA."
             exit 1
           fi
 
