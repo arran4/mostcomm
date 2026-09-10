@@ -59,7 +59,8 @@ jobs:
             mode="${INPUT_MODE:-build}"
             if [[ "$mode" == "publish-tag" ]]; then
                # The internal explicit publish-tag dispatch mode
-               if [[ "$REF_TYPE" == "tag" && "$GITHUB_REF" == refs/tags/v* ]]; then
+               source .github/scripts/release_policy.sh
+               if validate_publish_context "$REF_TYPE" "$GITHUB_REF"; then
                   run_code_checks=false
                   run_build=false
                   run_publisher=true
@@ -171,28 +172,26 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
+          source .github/scripts/release_policy.sh
           if [[ -n "$RELEASE_VERSION_OVERRIDE" ]]; then
              # Normalize optional leading v
              TAG="${RELEASE_VERSION_OVERRIDE#v}"
              TAG="v${TAG}"
              echo "Using manual version override: $TAG"
-             # Validate shape
-             if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+             # Validate shape using helper
+             if ! validate_stable_tag "$TAG"; then
                 echo "Error: Override $TAG is not a valid release tag shape."
                 sh -c "exit 1"
              fi
           else
              echo "Using arran4/git-tag-inc..."
-             # Use git-tag-inc safe version calculation
-             case "$RELEASE_MODE" in
-               release-major) level="major"; suffix="" ;;
-               release-minor) level="minor"; suffix="" ;;
-               release-patch) level="patch"; suffix="" ;;
-               *) echo "Unsupported release mode: $RELEASE_MODE" >&2; sh -c "exit 1" ;;
-             esac
-             args=(--print-version-only "$level")
-             [[ -n "$suffix" ]] && args+=("$suffix")
-             TAG="$(git-tag-inc "${args[@]}")"
+             # Use helper mapping
+             level=$(map_release_mode "$RELEASE_MODE" || true)
+             if [[ -z "$level" ]]; then
+                 echo "Unsupported release mode: $RELEASE_MODE" >&2
+                 sh -c "exit 1"
+             fi
+             TAG="$(git-tag-inc --print-version-only "$level")"
           fi
           echo "Calculated TAG=$TAG"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
@@ -268,7 +267,8 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid stable semantic version tag format: $RELEASE_TAG"; sh -c "exit 1"; }
+          source .github/scripts/release_policy.sh
+          validate_stable_tag "$RELEASE_TAG" || { echo "Invalid stable semantic version tag format: $RELEASE_TAG"; sh -c "exit 1"; }
       - name: Determine GoReleaser Args
         id: args
         env:
