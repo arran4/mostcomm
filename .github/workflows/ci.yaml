@@ -87,26 +87,19 @@ jobs:
     if: ${{ needs.route.outputs.run_code_checks == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - name: Test Release Policy
+        run: |
+          ./.github/scripts/test_release_policy.sh
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Cache-Go
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/Library/Caches/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
       - name: Test
         run: |
           go mod download
           go test ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
 
@@ -116,12 +109,12 @@ jobs:
     if: ${{ always() && needs.route.outputs.run_build == 'true' && (needs.validation.result == 'success' || needs.validation.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: go build -o mostcomm ./cmd/mostcomm
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: built-binary
           path: mostcomm
@@ -144,10 +137,10 @@ jobs:
       contents: write
       actions: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Install git-tag-inc
@@ -184,7 +177,7 @@ jobs:
              TAG="v${TAG}"
              echo "Using manual version override: $TAG"
              # Validate shape
-             if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+             if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
                 echo "Error: Override $TAG is not a valid release tag shape."
                 sh -c "exit 1"
              fi
@@ -265,10 +258,10 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Validate Tag Format
@@ -282,13 +275,9 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" == refs/tags/*-test* || "$GITHUB_REF" == refs/tags/test-* ]]; then
-             echo "args=release --snapshot --clean" >> "$GITHUB_OUTPUT"
-          else
-             echo "args=release --clean" >> "$GITHUB_OUTPUT"
-          fi
+          echo "args=release --clean" >> "$GITHUB_OUTPUT"
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
