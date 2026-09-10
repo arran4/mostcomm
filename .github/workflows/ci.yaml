@@ -38,6 +38,7 @@ jobs:
       run_publisher: ${{ steps.route.outputs.run_publisher }}
       mode: ${{ steps.route.outputs.mode }}
     steps:
+      - uses: actions/checkout@v7
       - id: route
         env:
           EVENT_NAME: ${{ github.event_name }}
